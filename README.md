@@ -8,14 +8,12 @@
 
 ### Оригинальные проекты
 
-| Проект | Автор | Ссылка |
-|--------|-------|--------|
-| **Telemt** — MTProto прокси на Rust + Tokio | [@telemt](https://github.com/telemt) | [github.com/telemt/telemt](https://github.com/telemt/telemt) |
-| **Telemt Panel** — Веб-панель управления на Go + React | [@amirotin](https://github.com/amirotin) | [github.com/amirotin/telemt_panel](https://github.com/amirotin/telemt_panel) |
+| Проект | Ссылка |
+|--------|--------|
+| **Telemt** — MTProto прокси на Rust + Tokio | [github.com/telemt/telemt](https://github.com/telemt/telemt) |
+| **Telemt Panel** — Веб-панель управления на Go + React | [github.com/amirotin/telemt_panel](https://github.com/amirotin/telemt_panel) |
 
 Огромный респект авторам обоих проектов. Telemt решает проблемы ещё до того, как другие вообще понимают, что они существуют.
-
-Telegram-сообщество Telemt: **[t.me/telemtrs](https://t.me/telemtrs)**
 
 ---
 
