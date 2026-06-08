@@ -61,7 +61,7 @@ Telegram-сообщество Telemt: **[t.me/telemtrs](https://t.me/telemtrs)**
 ## Установка
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pumbaX/telemt-manager/main/telemt-manager.sh -o telemt-manager.sh && sudo bash telemt-manager.sh
+curl -fsSL https://raw.githubusercontent.com/qwerokip-wq/telemt-manager/main/telemt-manager.sh -o telemt-manager.sh && sudo bash telemt-manager.sh
 ```
 
 ---
