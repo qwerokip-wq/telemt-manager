@@ -1790,11 +1790,475 @@ do_setup_domain() {
     cat > "${web_root}/index.html" << 'STUB'
 <!DOCTYPE html>
 <html lang="ru">
-<head><meta charset="utf-8"><title>Welcome</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f0f2f5">
-<div style="text-align:center;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.1)">
-<h1 style="color:#333">Добро пожаловать</h1><p style="color:#666">Сервер работает</p>
-</div></body></html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Скоро запуск • живая сеть</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', 'Poppins', system-ui, sans-serif;
+      background: #0a0a12;
+      padding: 1.5rem;
+      overflow-x: hidden;
+      position: relative;
+    }
+    #network-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .hero {
+      position: relative;
+      z-index: 1;
+      max-width: 820px;
+      width: 100%;
+      background: rgba(10, 10, 22, 0.65);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 3.5rem 2rem 3.5rem 2rem;
+      padding: 3.5rem 3rem;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: 0 30px 70px -20px #000000cc, 0 0 0 1px rgba(255, 255, 255, 0.02), 0 0 80px rgba(99, 102, 241, 0.08);
+      text-align: center;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .hero:hover { transform: scale(1.008) translateY(-4px); }
+    .neon-icon {
+      display: inline-flex;
+      background: rgba(99, 102, 241, 0.08);
+      padding: 1.2rem;
+      border-radius: 60% 40% 60% 40%;
+      margin-bottom: 1.6rem;
+      border: 1px solid rgba(99, 102, 241, 0.15);
+      box-shadow: 0 0 40px rgba(99, 102, 241, 0.15), inset 0 0 30px rgba(99, 102, 241, 0.05);
+      animation: pulseGlow 3s ease-in-out infinite;
+    }
+    .neon-icon svg {
+      width: 60px; height: 60px;
+      fill: none; stroke: #a5b4fc;
+      stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+      filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.4));
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.1), inset 0 0 20px rgba(99, 102, 241, 0.02); }
+      50% { box-shadow: 0 0 70px rgba(99, 102, 241, 0.25), inset 0 0 40px rgba(99, 102, 241, 0.08); }
+    }
+    h1 {
+      font-size: 4rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(145deg, #e0e7ff, #818cf8, #c7d2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.2rem;
+      text-shadow: 0 0 50px rgba(99, 102, 241, 0.15);
+    }
+    .tagline {
+      font-size: 1.3rem;
+      font-weight: 300;
+      color: #9aa2cf;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      padding-bottom: 1.2rem;
+      margin-bottom: 1.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .tagline .badge {
+      background: rgba(99, 102, 241, 0.12);
+      padding: 0.2rem 1rem;
+      border-radius: 60px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.15);
+      backdrop-filter: blur(4px);
+    }
+    .timer-grid {
+      display: flex;
+      justify-content: center;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+      margin: 2rem 0 2.4rem 0;
+    }
+    .time-block {
+      background: rgba(8, 8, 24, 0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 2.2rem 1.2rem 2.2rem 1.2rem;
+      padding: 0.8rem 1.2rem;
+      min-width: 90px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: 0 10px 30px -10px #000000aa, inset 0 1px 0 rgba(255, 255, 255, 0.02);
+      transition: 0.25s ease;
+    }
+    .time-block:hover {
+      border-color: rgba(99, 102, 241, 0.15);
+      box-shadow: 0 0 30px rgba(99, 102, 241, 0.06);
+    }
+    .time-number {
+      font-size: 3.2rem;
+      font-weight: 700;
+      color: #eef2ff;
+      letter-spacing: 2px;
+      display: block;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 30px rgba(99, 102, 241, 0.2);
+    }
+    .time-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 2.5px;
+      color: #7b83ae;
+      display: block;
+      font-weight: 500;
+      margin-top: 0.1rem;
+    }
+    .description {
+      background: rgba(255, 255, 255, 0.015);
+      border-radius: 2.5rem 1rem 2.5rem 1rem;
+      padding: 1.2rem 1.8rem;
+      margin: 1.8rem 0 2.2rem 0;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      font-size: 1.05rem;
+      color: #c2c9ec;
+      line-height: 1.7;
+      backdrop-filter: blur(2px);
+    }
+    .description strong {
+      color: #d4dcff;
+      font-weight: 500;
+      background: linear-gradient(135deg, #a5b4fc, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .cta-form {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.8rem;
+      margin-top: 0.6rem;
+    }
+    .cta-form input {
+      flex: 1 1 220px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 1rem 1.8rem;
+      border-radius: 60px;
+      color: #f0f0f5;
+      font-size: 1rem;
+      outline: none;
+      transition: 0.3s ease;
+      backdrop-filter: blur(4px);
+      font-weight: 300;
+      letter-spacing: 0.2px;
+    }
+    .cta-form input::placeholder { color: #6a729c; font-weight: 300; }
+    .cta-form input:focus {
+      border-color: #818cf8;
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.12), 0 0 40px rgba(99, 102, 241, 0.03);
+    }
+    .cta-form button {
+      background: linear-gradient(145deg, #6366f1, #4338ca);
+      border: none;
+      padding: 1rem 2.8rem;
+      border-radius: 60px;
+      font-weight: 600;
+      font-size: 1rem;
+      color: white;
+      cursor: pointer;
+      transition: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 10px 30px -8px #3b3f9baa, inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      letter-spacing: 0.6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-form button::after {
+      content: '';
+      position: absolute;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+      opacity: 0;
+      transition: 0.4s;
+    }
+    .cta-form button:hover {
+      transform: translateY(-3px) scale(1.02);
+      background: linear-gradient(145deg, #818cf8, #6366f1);
+      box-shadow: 0 16px 40px -10px #4f46e5cc, 0 0 60px rgba(99, 102, 241, 0.08);
+    }
+    .cta-form button:hover::after { opacity: 1; }
+    .cta-form button:active { transform: scale(0.96); }
+    .footer-links {
+      margin-top: 2.8rem;
+      font-size: 0.8rem;
+      color: #4d5480;
+      letter-spacing: 0.3px;
+      border-top: 1px solid rgba(255, 255, 255, 0.02);
+      padding-top: 2rem;
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: #7b84b0;
+      text-decoration: none;
+      transition: 0.25s;
+      border-bottom: 1px solid transparent;
+      padding-bottom: 2px;
+      font-weight: 400;
+    }
+    .footer-links a:hover { color: #c7ceff; border-bottom-color: #6366f1; }
+    .footer-links .dot { color: #3a3f66; }
+    @media (max-width: 600px) {
+      .hero { padding: 2rem 1.5rem; border-radius: 2.5rem 1.5rem 2.5rem 1.5rem; }
+      h1 { font-size: 2.8rem; }
+      .time-number { font-size: 2.4rem; }
+      .time-block { min-width: 70px; padding: 0.6rem 0.8rem; }
+      .tagline { font-size: 1rem; }
+      .cta-form input { flex: 1 1 100%; }
+      .cta-form button { width: 100%; }
+      .neon-icon svg { width: 44px; height: 44px; }
+    }
+    @media (max-width: 420px) {
+      h1 { font-size: 2.2rem; }
+      .timer-grid { gap: 0.6rem; }
+      .time-block { min-width: 60px; padding: 0.4rem 0.5rem; }
+      .time-number { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="network-canvas"></canvas>
+  <div class="hero">
+    <div class="neon-icon">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+        <path d="M8 4 L4 8" />
+        <path d="M16 4 L20 8" />
+        <path d="M4 16 L8 20" />
+        <path d="M20 16 L16 20" />
+      </svg>
+    </div>
+    <h1>Скоро здесь</h1>
+    <div class="tagline">
+      <span>Новый уровень в разработке</span>
+      <span class="badge">✦ coming soon</span>
+    </div>
+    <div class="timer-grid" id="timerGrid">
+      <div class="time-block"><span class="time-number" id="days">00</span><span class="time-label">дней</span></div>
+      <div class="time-block"><span class="time-number" id="hours">00</span><span class="time-label">часов</span></div>
+      <div class="time-block"><span class="time-number" id="minutes">00</span><span class="time-label">минут</span></div>
+      <div class="time-block"><span class="time-number" id="seconds">00</span><span class="time-label">секунд</span></div>
+    </div>
+    <div class="description">
+      <strong>✦ Мы создаём нечто особенное</strong> — инновационный продукт, который изменит ваш опыт. 
+      Осталось совсем чуть-чуть. Подпишись и будь в курсе!
+    </div>
+    <form class="cta-form" id="subscribeForm">
+      <input type="email" placeholder="Ваш email" required aria-label="Email для уведомлений" />
+      <button type="submit">Уведомить меня</button>
+    </form>
+    <div class="footer-links">
+      <span>© 2026 — ваш проект</span>
+      <span class="dot">•</span>
+      <a href="#" onclick="event.preventDefault(); alert('hello@project.dev')">Контакты</a>
+      <span class="dot">•</span>
+      <a href="#" onclick="event.preventDefault(); alert('Политика конфиденциальности')">Конфиденциальность</a>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const now = new Date();
+      const launchDate = new Date(now.getTime());
+      launchDate.setDate(launchDate.getDate() + 14);
+      const daysEl = document.getElementById('days');
+      const hoursEl = document.getElementById('hours');
+      const minutesEl = document.getElementById('minutes');
+      const secondsEl = document.getElementById('seconds');
+      function pad(n) { return String(n).padStart(2, '0'); }
+      function updateTimer() {
+        const diff = launchDate.getTime() - Date.now();
+        if (diff <= 0) {
+          daysEl.textContent = '00'; hoursEl.textContent = '00';
+          minutesEl.textContent = '00'; secondsEl.textContent = '00';
+          return;
+        }
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        daysEl.textContent = pad(days);
+        hoursEl.textContent = pad(hours);
+        minutesEl.textContent = pad(minutes);
+        secondsEl.textContent = pad(seconds);
+      }
+      updateTimer();
+      setInterval(updateTimer, 1000);
+    })();
+    document.getElementById('subscribeForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const email = this.querySelector('input[type="email"]');
+      if (email.value.trim() !== '') {
+        alert('Отлично! ' + email.value + ' — вы в списке первых. Ждите новостей.');
+        email.value = '';
+      } else {
+        alert('Пожалуйста, введите email.');
+      }
+    });
+    (function() {
+      const canvas = document.getElementById('network-canvas');
+      const ctx = canvas.getContext('2d');
+      let width, height;
+      let mouseX = 0.5, mouseY = 0.5;
+      let targetMouseX = 0.5, targetMouseY = 0.5;
+      const NODE_COUNT = 80;
+      const CONNECT_DIST = 150;
+      const NODE_RADIUS = 2.5;
+      const MOUSE_INFLUENCE = 180;
+      const MOUSE_FORCE = 1.8;
+      let nodes = [];
+      function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        createNodes();
+      }
+      function createNodes() {
+        nodes = [];
+        for (let i = 0; i < NODE_COUNT; i++) {
+          nodes.push({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5,
+            baseX: 0, baseY: 0,
+            radius: NODE_RADIUS + (Math.random() - 0.5) * 1.5
+          });
+        }
+        nodes.forEach(n => { n.baseX = n.x; n.baseY = n.y; });
+      }
+      window.addEventListener('resize', resize);
+      resize();
+      document.addEventListener('mousemove', (e) => {
+        targetMouseX = e.clientX / width;
+        targetMouseY = e.clientY / height;
+      });
+      document.addEventListener('touchmove', (e) => {
+        const touch = e.touches[0];
+        if (touch) { targetMouseX = touch.clientX / width; targetMouseY = touch.clientY / height; }
+      }, { passive: true });
+      function smoothMouse() {
+        mouseX += (targetMouseX - mouseX) * 0.08;
+        mouseY += (targetMouseY - mouseY) * 0.08;
+      }
+      function updateNodes() {
+        const mouseWorldX = mouseX * width;
+        const mouseWorldY = mouseY * height;
+        nodes.forEach(n => {
+          n.vx += (n.baseX - n.x) * 0.012;
+          n.vy += (n.baseY - n.y) * 0.012;
+          const dx = n.x - mouseWorldX;
+          const dy = n.y - mouseWorldY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < MOUSE_INFLUENCE && dist > 0.5) {
+            const force = (MOUSE_INFLUENCE - dist) / MOUSE_INFLUENCE * MOUSE_FORCE;
+            n.vx += (dx / dist) * force * 0.4;
+            n.vy += (dy / dist) * force * 0.4;
+          }
+          nodes.forEach(other => {
+            if (other === n) return;
+            const dx2 = n.x - other.x;
+            const dy2 = n.y - other.y;
+            const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+            if (dist2 < CONNECT_DIST && dist2 > 0.5) {
+              const force = (CONNECT_DIST - dist2) / CONNECT_DIST * 0.02;
+              n.vx += (dx2 / dist2) * force * 0.3;
+              n.vy += (dy2 / dist2) * force * 0.3;
+            }
+          });
+          n.vx *= 0.94;
+          n.vy *= 0.94;
+          n.x += n.vx;
+          n.y += n.vy;
+          n.x = Math.max(0, Math.min(width, n.x));
+          n.y = Math.max(0, Math.min(height, n.y));
+        });
+      }
+      function draw() {
+        ctx.clearRect(0, 0, width, height);
+        for (let i = 0; i < nodes.length; i++) {
+          for (let j = i + 1; j < nodes.length; j++) {
+            const dx = nodes[i].x - nodes[j].x;
+            const dy = nodes[i].y - nodes[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < CONNECT_DIST) {
+              const alpha = 0.15 * (1 - dist / CONNECT_DIST);
+              ctx.beginPath();
+              ctx.moveTo(nodes[i].x, nodes[i].y);
+              ctx.lineTo(nodes[j].x, nodes[j].y);
+              ctx.strokeStyle = 'rgba(165, 180, 252, ' + alpha + ')';
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+            }
+          }
+        }
+        nodes.forEach(n => {
+          ctx.shadowColor = 'rgba(99, 102, 241, 0.2)';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(165, 180, 252, 0.6)';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius * 0.4, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(220, 230, 255, 0.8)';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        });
+        const mouseWorldX = mouseX * width;
+        const mouseWorldY = mouseY * height;
+        const gradient = ctx.createRadialGradient(
+          mouseWorldX, mouseWorldY, 0,
+          mouseWorldX, mouseWorldY, MOUSE_INFLUENCE
+        );
+        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.03)');
+        gradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
+        ctx.beginPath();
+        ctx.arc(mouseWorldX, mouseWorldY, MOUSE_INFLUENCE, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+      function animate() {
+        smoothMouse();
+        updateNodes();
+        draw();
+        requestAnimationFrame(animate);
+      }
+      animate();
+    })();
+  </script>
+</body>
+</html>
 STUB
     chmod 644 "${web_root}/index.html"
 
