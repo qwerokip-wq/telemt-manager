@@ -807,8 +807,7 @@ do_add_client() {
 
     local new_secret link
     new_secret=$(echo "$resp" | jq -r '.data.secret // empty')
-    link=$(echo "$resp" | jq -r '.data.user.links.tls[]? | select(test("server=[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+"))' \
-        2>/dev/null | head -1)
+    link=$(echo "$resp" | jq -r '.data.user.links.tls[]?' 2>/dev/null | head -1)
 
     echo ""
     echo -e "${GREEN}========================================${NC}"
