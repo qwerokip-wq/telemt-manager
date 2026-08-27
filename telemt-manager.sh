@@ -1754,7 +1754,7 @@ do_setup_domain() {
         return
     fi
 
-    if ! is_interactive; then
+    if is_interactive; then
         echo -ne "Проверь DNS: A-запись ${domain} указывает на этот сервер? [y/N]: "
         read -r confirm
         [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { warn "Отменено."; return; }
@@ -1909,6 +1909,207 @@ do_public_mode() {
 }
 
 # ==============================================================
+# WEB-ПРОКСИ (tg://webproxy)
+# ==============================================================
+
+do_web_proxy() {
+    local domain="${FLAG_DOMAIN}"
+    local web_user="${FLAG_USER}"
+    local web_secret="${FLAG_SECRET}"
+    local web_port="18080"
+    local proxy_port
+    local public_ip
+
+    if [[ -z "$domain" ]]; then
+        domain=$(load_manager_config "DOMAIN" "")
+    fi
+    if [[ -z "$domain" ]]; then
+        echo -ne " Введите домен с валидным SSL (например vpn.example.com): "
+        read -r domain
+    fi
+    if [[ -z "$domain" ]]; then
+        warn "Отменено."
+        return
+    fi
+
+    if ! [[ "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]; then
+        error "Неверный формат домена"
+        return
+    fi
+
+    if [[ ! -f "$TELEMT_CONFIG" ]]; then
+        error "Telemt не установлен. Сначала выполни --install"
+        return
+    fi
+
+    local cert_path="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    if [[ ! -f "$cert_path" ]]; then
+        error "Нет SSL-сертификата для ${domain}. Сначала выполни 'Домен + SSL + сайт' (--setup-domain)"
+        return
+    fi
+
+    [[ -z "$web_user" ]] && web_user="webuser"
+    if ! [[ "$web_user" =~ ^[A-Za-z0-9_.-]{1,64}$ ]]; then
+        error "Неверное имя WEB-пользователя"
+        return
+    fi
+
+    if [[ -z "$web_secret" ]]; then
+        web_secret=$(openssl rand -hex 16)
+    fi
+    if ! [[ "$web_secret" =~ ^[0-9a-fA-F]{32}$ ]]; then
+        error "Секрет должен быть 32 hex-символа"
+        return
+    fi
+
+    proxy_port=$(grep -oP '^port\s*=\s*\K[0-9]+' "$TELEMT_CONFIG" | head -1)
+    [[ -z "$proxy_port" ]] && proxy_port="8443"
+
+    public_ip=$(get_public_ip)
+    if [[ -z "$public_ip" ]]; then
+        error "Не удалось определить публичный IP"
+        return
+    fi
+
+    if ss -ltn 2>/dev/null | grep -q "127.0.0.1:${web_port}\b"; then
+        error "Порт ${web_port} уже занят"
+        return
+    fi
+
+    # Бэкап перед изменениями
+    cp -f "$TELEMT_CONFIG" "${TELEMT_CONFIG}.bak.$(date +%s)" 2>/dev/null || true
+
+    # 1. Создаём WEB-пользователя в [access.users]
+    local existing_secret
+    existing_secret=$(grep -oP "^${web_user}\s*=\s*\"\K[0-9a-fA-F]{32}" "$TELEMT_CONFIG" | head -1)
+    if [[ -z "$existing_secret" ]]; then
+        cat >> "$TELEMT_CONFIG" << EOF
+
+${web_user} = "${web_secret}"
+EOF
+    else
+        web_secret="$existing_secret"
+        info "Пользователь ${web_user} уже существует, использую его секрет"
+    fi
+
+    # 2. Если WEB-listener ещё не добавлен — добавляем Mtproxy + WEB listeners
+    if ! grep -q 'transport = "web"' "$TELEMT_CONFIG"; then
+        awk -v p="$proxy_port" -v w="$web_port" '
+            /^port = / && !done {
+                print $0
+                printf "\n[[server.listeners]]\nip = \"0.0.0.0\"\nport = %s\n\n[[server.listeners]]\nip = \"127.0.0.1\"\nport = %s\ntransport = \"web\"\nweb_client_ip_source = \"x_forwarded_for\"\nweb_trusted_proxy_cidrs = [\"127.0.0.1/32\"]\n", p, w
+                done = 1
+                next
+            }
+            { print }
+        ' "$TELEMT_CONFIG" > "$TELEMT_CONFIG.new" && mv "$TELEMT_CONFIG.new" "$TELEMT_CONFIG"
+    else
+        info "WEB-listener уже настроен, пропускаю"
+    fi
+
+    # 3. Добавляем секцию [web]
+    if ! grep -q '^\[web\]$' "$TELEMT_CONFIG"; then
+        cat >> "$TELEMT_CONFIG" << EOF
+
+[web]
+enabled = true
+carrier = "https-lanes"
+
+[[web.vhosts]]
+host = "${domain}"
+public_addr = "${public_ip}:443"
+
+[web.vhosts.decoy]
+mode = "static_directory"
+directory = "/var/www/${domain}"
+index = "index.html"
+
+[[web.vhosts.profiles]]
+user = "${web_user}"
+secret_mode = "dd"
+max_sessions = 8
+max_streams = 512
+max_streams_per_session = 64
+EOF
+    fi
+
+    # 4. NGINX: TLS termination → telemt WEB-listener
+    info "Настраиваю nginx..."
+    cat > /etc/nginx/conf.d/telemt-web.conf << 'EOF'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+upstream telemt_web {
+    server 127.0.0.1:18080;
+    keepalive 64;
+}
+EOF
+
+    cat > "/etc/nginx/sites-available/${domain}" << EOF
+server {
+    listen 80;
+    server_name ${domain};
+    return 301 https://\$host\$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    server_name ${domain};
+
+    ssl_certificate /etc/letsencrypt/live/${domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 2m;
+
+    location / {
+        proxy_pass http://telemt_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_read_timeout 65s;
+        proxy_send_timeout 65s;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_next_upstream off;
+    }
+}
+EOF
+    ln -sf "/etc/nginx/sites-available/${domain}" "/etc/nginx/sites-enabled/" 2>/dev/null || true
+
+    if nginx -t 2>/dev/null; then
+        systemctl reload nginx
+    else
+        warn "nginx -t не прошёл, конфиг WEB может быть некорректен"
+    fi
+
+    # 5. Перезапуск telemt
+    systemctl restart telemt 2>/dev/null || true
+
+    save_manager_config "WEB_PROXY" "on"
+    save_manager_config "WEB_USER" "$web_user"
+    save_manager_config "DOMAIN" "$domain"
+    save_manager_config "PUBLIC_MODE" "domain"
+
+    # 6. Ссылка WEB
+    echo ""
+    echo "================================"
+    echo " WEB-прокси настроен!"
+    echo "================================"
+    echo " Домен:   ${domain}"
+    echo " Порт:    443 (TLS)"
+    echo " Пользователь: ${web_user}"
+    echo " Ссылка:"
+    echo "  tg://webproxy?server=${domain}&secret=dd${web_secret}"
+    echo ""
+    echo " Для подключения в Telegram Desktop выбери тип прокси WEB"
+    echo " Важно: только секреты plain/dd (FakeTLS ee не работает в WEB)"
+}
+
+# ==============================================================
 # CLI-АРГУМЕНТЫ
 # ==============================================================
 
@@ -1926,6 +2127,7 @@ FLAG_AD_TAG=""
 FLAG_AD_TAG_USER=""
 FLAG_AD_TAG_VALUE=""
 FLAG_SETUP_DOMAIN=false
+FLAG_WEB_PROXY=false
 FLAG_PUBLIC_MODE=""
 FLAG_DOMAIN=""
 FLAG_PORT=""
@@ -1977,6 +2179,11 @@ usage() {
     echo ""
     echo "  --public-mode domain|ip  Переключить домен/IP в ссылках"
     echo ""
+    echo "  --web-proxy         Настроить WEB-прокси (tg://webproxy)"
+    echo "    --domain HOST       Домен с валидным SSL (обязательно)"
+    echo "    --user NAME         WEB-пользователь (по умолч. webuser)"
+    echo "    --secret HEX        Секрет WEB-пользователя (32 hex, авто-генерация)"
+    echo ""
     echo "  -h, --help          Показать помощь"
     echo ""
     echo "Переменные окружения: TLS_DOMAIN, PROXY_PORT, PROXY_USER, USE_MIDDLE_PROXY"
@@ -2000,6 +2207,7 @@ parse_args() {
             --ad-tag-user)     shift; FLAG_AD_TAG_USER="$1" ;;
             --ad-tag-value)    shift; FLAG_AD_TAG_VALUE="$1" ;;
             --setup-domain)    FLAG_SETUP_DOMAIN=true ;;
+            --web-proxy)       FLAG_WEB_PROXY=true ;;
             --public-mode)     shift; FLAG_PUBLIC_MODE="$1" ;;
             --domain)          shift; FLAG_DOMAIN="$1" ;;
             --port)            shift; FLAG_PORT="$1" ;;
@@ -2044,6 +2252,8 @@ show_menu() {
         echo -e "${CYAN}║${NC}  --- Домен ---               ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC}  12. Домен + SSL + сайт      ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC}  13. Домен/IP в ссылках      ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC}  --- WEB-прокси ---           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC}  14. WEB-прокси (tg://webproxy)${CYAN}║${NC}"
         echo -e "${CYAN}║${NC}  0. Выход                    ${CYAN}║${NC}"
         echo -e "${CYAN}╚══════════════════════════════╝${NC}"
         echo -ne " Выбор: "
@@ -2063,6 +2273,7 @@ show_menu() {
             11) do_ad_tag ;;
             12) do_setup_domain ;;
             13) do_public_mode ;;
+            14) do_web_proxy ;;
             0) exit 0 ;;
             *) warn "Неверный выбор" ;;
         esac
@@ -2110,6 +2321,7 @@ main() {
     [[ -n "$FLAG_DEL_CLIENT" ]] && needs_lock=true
     [[ -n "$FLAG_AD_TAG" ]] && needs_lock=true
     $FLAG_SETUP_DOMAIN && needs_lock=true
+    $FLAG_WEB_PROXY && needs_lock=true
     [[ -n "$FLAG_PUBLIC_MODE" ]] && needs_lock=true
 
     $needs_lock && acquire_lock
@@ -2126,6 +2338,7 @@ main() {
     [[ -n "$FLAG_AUTOUPDATE" ]] && do_autoupdate
     [[ -n "$FLAG_AD_TAG" ]] && do_ad_tag
     $FLAG_SETUP_DOMAIN && do_setup_domain
+    $FLAG_WEB_PROXY && do_web_proxy
     [[ -n "$FLAG_PUBLIC_MODE" ]] && do_public_mode
 
     $needs_lock && release_lock
