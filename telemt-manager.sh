@@ -673,19 +673,34 @@ do_links() {
         return
     fi
 
-    local web_user web_domain web_secret
-    web_user=$(load_manager_config WEB_USER "")
+    local web_domain
     web_domain=$(load_manager_config DOMAIN "")
-    if [[ -n "$web_user" && -n "$web_domain" && -f "$TELEMT_CONFIG" ]]; then
-        web_secret=$(awk -v u="$web_user" '
-            /^\[access\.users\]$/ { inusers=1; next }
-            /^\[/ { inusers=0 }
-            inusers && $0 ~ "^"u"[[:space:]]*=" {
-                gsub(/[ "\t]/, "", $0)
-                split($0, a, "=")
+    if [[ -z "$web_domain" && -f "$TELEMT_CONFIG" ]]; then
+        web_domain=$(awk '
+            /^\[\[web\.vhosts\]\]/ { inv=1; next }
+            /^\[/ { inv=0 }
+            inv && /^[[:space:]]*host[[:space:]]*=/ {
+                gsub(/[ "]/,"",$0)
+                split($0,a,"=")
                 print a[2]
                 exit
             }' "$TELEMT_CONFIG" 2>/dev/null)
+    fi
+    local web_users=""
+    local web_legacy
+    web_legacy=$(load_manager_config WEB_USER "")
+    if [[ -f "$TELEMT_CONFIG" ]]; then
+        web_users=$(awk '
+            /^\[\[web\.vhosts\.profiles\]\]/ { inp=1; next }
+            /^\[/ { inp=0 }
+            inp && /^[[:space:]]*user[[:space:]]*=/ {
+                gsub(/[ "]/,"",$0)
+                split($0,a,"=")
+                print a[2]
+            }' "$TELEMT_CONFIG" 2>/dev/null)
+    fi
+    if [[ -n "$web_legacy" ]] && ! echo "$web_users" | grep -qx "$web_legacy" 2>/dev/null; then
+        web_users=$(printf '%s\n%s' "$web_users" "$web_legacy")
     fi
 
     echo ""
@@ -694,9 +709,24 @@ do_links() {
         local uname
         uname=$(echo "$line" | jq -r '.username' 2>/dev/null)
         echo "  [${uname}]"
-        if [[ -n "$web_user" && "$uname" == "$web_user" && -n "$web_secret" ]]; then
-            echo "tg://webproxy?server=${web_domain}&secret=dd${web_secret}"
-        else
+        local showed_web=false
+        if [[ -n "$web_domain" ]] && echo "$web_users" | grep -qx "$uname" 2>/dev/null; then
+            local usr_secret
+            usr_secret=$(awk -v u="$uname" '
+                /^\[access\.users\]$/ { inusers=1; next }
+                /^\[/ { inusers=0 }
+                inusers && $0 ~ "^"u"[[:space:]]*=" {
+                    gsub(/[ "\t]/, "", $0)
+                    split($0, a, "=")
+                    print a[2]
+                    exit
+                }' "$TELEMT_CONFIG" 2>/dev/null)
+            if [[ -n "$usr_secret" ]]; then
+                echo "tg://webproxy?server=${web_domain}&secret=dd${usr_secret}"
+                showed_web=true
+            fi
+        fi
+        if ! $showed_web; then
             echo "$line" | jq -r '.links.tls[]?' 2>/dev/null
         fi
         echo ""
