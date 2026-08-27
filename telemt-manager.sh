@@ -673,12 +673,34 @@ do_links() {
         return
     fi
 
+    local web_user web_domain web_secret
+    web_user=$(load_manager_config WEB_USER "")
+    web_domain=$(load_manager_config DOMAIN "")
+    if [[ -n "$web_user" && -n "$web_domain" && -f "$TELEMT_CONFIG" ]]; then
+        web_secret=$(awk -v u="$web_user" '
+            /^\[access\.users\]$/ { inusers=1; next }
+            /^\[/ { inusers=0 }
+            inusers && $0 ~ "^"u"[[:space:]]*=" {
+                gsub(/[ "\t]/, "", $0)
+                split($0, a, "=")
+                print a[2]
+                exit
+            }' "$TELEMT_CONFIG" 2>/dev/null)
+    fi
+
     echo ""
     echo -e "${CYAN}========== Ссылки клиентов ==========${NC}"
-    echo "$raw" | jq -r '.data[] |
-        "  [" + .username + "]",
-        (.links.tls[]?),
-        ""' 2>/dev/null
+    while IFS= read -r line; do
+        local uname
+        uname=$(echo "$line" | jq -r '.username' 2>/dev/null)
+        echo "  [${uname}]"
+        if [[ -n "$web_user" && "$uname" == "$web_user" && -n "$web_secret" ]]; then
+            echo "tg://webproxy?server=${web_domain}&secret=dd${web_secret}"
+        else
+            echo "$line" | jq -r '.links.tls[]?' 2>/dev/null
+        fi
+        echo ""
+    done < <(echo "$raw" | jq -c '.data[]' 2>/dev/null)
 
     local summary
     summary=$(curl -s --max-time 5 "http://127.0.0.1:${api_port}/v1/stats/summary" 2>/dev/null)
@@ -1794,8 +1816,56 @@ do_setup_domain() {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Скоро запуск • живая сеть</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="network-canvas"></canvas>
+  <div class="hero">
+    <div class="neon-icon">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+        <path d="M8 4 L4 8" />
+        <path d="M16 4 L20 8" />
+        <path d="M4 16 L8 20" />
+        <path d="M20 16 L16 20" />
+      </svg>
+    </div>
+    <h1>Скоро здесь</h1>
+    <div class="tagline">
+      <span>Новый уровень в разработке</span>
+      <span class="badge">✦ coming soon</span>
+    </div>
+    <div class="timer-grid" id="timerGrid">
+      <div class="time-block"><span class="time-number" id="days">00</span><span class="time-label">дней</span></div>
+      <div class="time-block"><span class="time-number" id="hours">00</span><span class="time-label">часов</span></div>
+      <div class="time-block"><span class="time-number" id="minutes">00</span><span class="time-label">минут</span></div>
+      <div class="time-block"><span class="time-number" id="seconds">00</span><span class="time-label">секунд</span></div>
+    </div>
+    <div class="description">
+      <strong>✦ Мы создаём нечто особенное</strong> — инновационный продукт, который изменит ваш опыт.
+      Осталось совсем чуть-чуть. Подпишись и будь в курсе!
+    </div>
+    <form class="cta-form" id="subscribeForm">
+      <input type="email" placeholder="Ваш email" required aria-label="Email для уведомлений" />
+      <button type="submit">Уведомить меня</button>
+    </form>
+    <div class="footer-links">
+      <span>© 2026 — ваш проект</span>
+      <span class="dot">•</span>
+      <a href="#" data-alert="hello@project.dev">Контакты</a>
+      <span class="dot">•</span>
+      <a href="#" data-alert="Политика конфиденциальности">Конфиденциальность</a>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
+STUB
+    chmod 644 "${web_root}/index.html"
+
+    cat > "${web_root}/style.css" << 'CSS'
+* { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       min-height: 100vh;
       display: flex;
@@ -2044,223 +2114,190 @@ do_setup_domain() {
       .time-block { min-width: 60px; padding: 0.4rem 0.5rem; }
       .time-number { font-size: 1.8rem; }
     }
-  </style>
-</head>
-<body>
-  <canvas id="network-canvas"></canvas>
-  <div class="hero">
-    <div class="neon-icon">
-      <svg viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-        <path d="M8 4 L4 8" />
-        <path d="M16 4 L20 8" />
-        <path d="M4 16 L8 20" />
-        <path d="M20 16 L16 20" />
-      </svg>
-    </div>
-    <h1>Скоро здесь</h1>
-    <div class="tagline">
-      <span>Новый уровень в разработке</span>
-      <span class="badge">✦ coming soon</span>
-    </div>
-    <div class="timer-grid" id="timerGrid">
-      <div class="time-block"><span class="time-number" id="days">00</span><span class="time-label">дней</span></div>
-      <div class="time-block"><span class="time-number" id="hours">00</span><span class="time-label">часов</span></div>
-      <div class="time-block"><span class="time-number" id="minutes">00</span><span class="time-label">минут</span></div>
-      <div class="time-block"><span class="time-number" id="seconds">00</span><span class="time-label">секунд</span></div>
-    </div>
-    <div class="description">
-      <strong>✦ Мы создаём нечто особенное</strong> — инновационный продукт, который изменит ваш опыт. 
-      Осталось совсем чуть-чуть. Подпишись и будь в курсе!
-    </div>
-    <form class="cta-form" id="subscribeForm">
-      <input type="email" placeholder="Ваш email" required aria-label="Email для уведомлений" />
-      <button type="submit">Уведомить меня</button>
-    </form>
-    <div class="footer-links">
-      <span>© 2026 — ваш проект</span>
-      <span class="dot">•</span>
-      <a href="#" onclick="event.preventDefault(); alert('hello@project.dev')">Контакты</a>
-      <span class="dot">•</span>
-      <a href="#" onclick="event.preventDefault(); alert('Политика конфиденциальности')">Конфиденциальность</a>
-    </div>
-  </div>
-  <script>
-    (function() {
-      const now = new Date();
-      const launchDate = new Date(now.getTime());
-      launchDate.setDate(launchDate.getDate() + 14);
-      const daysEl = document.getElementById('days');
-      const hoursEl = document.getElementById('hours');
-      const minutesEl = document.getElementById('minutes');
-      const secondsEl = document.getElementById('seconds');
-      function pad(n) { return String(n).padStart(2, '0'); }
-      function updateTimer() {
-        const diff = launchDate.getTime() - Date.now();
-        if (diff <= 0) {
-          daysEl.textContent = '00'; hoursEl.textContent = '00';
-          minutesEl.textContent = '00'; secondsEl.textContent = '00';
-          return;
-        }
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        daysEl.textContent = pad(days);
-        hoursEl.textContent = pad(hours);
-        minutesEl.textContent = pad(minutes);
-        secondsEl.textContent = pad(seconds);
-      }
-      updateTimer();
-      setInterval(updateTimer, 1000);
-    })();
-    document.getElementById('subscribeForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const email = this.querySelector('input[type="email"]');
-      if (email.value.trim() !== '') {
-        alert('Отлично! ' + email.value + ' — вы в списке первых. Ждите новостей.');
-        email.value = '';
-      } else {
-        alert('Пожалуйста, введите email.');
-      }
-    });
-    (function() {
-      const canvas = document.getElementById('network-canvas');
-      const ctx = canvas.getContext('2d');
-      let width, height;
-      let mouseX = 0.5, mouseY = 0.5;
-      let targetMouseX = 0.5, targetMouseY = 0.5;
-      const NODE_COUNT = 80;
-      const CONNECT_DIST = 150;
-      const NODE_RADIUS = 2.5;
-      const MOUSE_INFLUENCE = 180;
-      const MOUSE_FORCE = 1.8;
-      let nodes = [];
-      function resize() {
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
-        createNodes();
-      }
-      function createNodes() {
-        nodes = [];
-        for (let i = 0; i < NODE_COUNT; i++) {
-          nodes.push({
-            x: Math.random() * width,
-            y: Math.random() * height,
-            vx: (Math.random() - 0.5) * 0.5,
-            vy: (Math.random() - 0.5) * 0.5,
-            baseX: 0, baseY: 0,
-            radius: NODE_RADIUS + (Math.random() - 0.5) * 1.5
-          });
-        }
-        nodes.forEach(n => { n.baseX = n.x; n.baseY = n.y; });
-      }
-      window.addEventListener('resize', resize);
-      resize();
-      document.addEventListener('mousemove', (e) => {
-        targetMouseX = e.clientX / width;
-        targetMouseY = e.clientY / height;
+CSS
+    chmod 644 "${web_root}/style.css"
+
+    cat > "${web_root}/script.js" << 'JS'
+(function() {
+  var now = new Date();
+  var launchDate = new Date(now.getTime());
+  launchDate.setDate(launchDate.getDate() + 14);
+  var daysEl = document.getElementById('days');
+  var hoursEl = document.getElementById('hours');
+  var minutesEl = document.getElementById('minutes');
+  var secondsEl = document.getElementById('seconds');
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function updateTimer() {
+    var diff = launchDate.getTime() - Date.now();
+    if (diff <= 0) {
+      daysEl.textContent = '00'; hoursEl.textContent = '00';
+      minutesEl.textContent = '00'; secondsEl.textContent = '00';
+      return;
+    }
+    var days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    var hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    var seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    daysEl.textContent = pad(days);
+    hoursEl.textContent = pad(hours);
+    minutesEl.textContent = pad(minutes);
+    secondsEl.textContent = pad(seconds);
+  }
+  updateTimer();
+  setInterval(updateTimer, 1000);
+})();
+
+document.getElementById('subscribeForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var email = this.querySelector('input[type="email"]');
+  if (email.value.trim() !== '') {
+    alert('Отлично! ' + email.value + ' — вы в списке первых. Ждите новостей.');
+    email.value = '';
+  } else {
+    alert('Пожалуйста, введите email.');
+  }
+});
+
+document.querySelectorAll('a[data-alert]').forEach(function(a) {
+  a.addEventListener('click', function(e) {
+    e.preventDefault();
+    alert(a.getAttribute('data-alert'));
+  });
+});
+
+(function() {
+  var canvas = document.getElementById('network-canvas');
+  var ctx = canvas.getContext('2d');
+  var width, height;
+  var mouseX = 0.5, mouseY = 0.5;
+  var targetMouseX = 0.5, targetMouseY = 0.5;
+  var NODE_COUNT = 80;
+  var CONNECT_DIST = 150;
+  var NODE_RADIUS = 2.5;
+  var MOUSE_INFLUENCE = 180;
+  var MOUSE_FORCE = 1.8;
+  var nodes = [];
+  function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    createNodes();
+  }
+  function createNodes() {
+    nodes = [];
+    for (var i = 0; i < NODE_COUNT; i++) {
+      nodes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        baseX: 0, baseY: 0,
+        radius: NODE_RADIUS + (Math.random() - 0.5) * 1.5
       });
-      document.addEventListener('touchmove', (e) => {
-        const touch = e.touches[0];
-        if (touch) { targetMouseX = touch.clientX / width; targetMouseY = touch.clientY / height; }
-      }, { passive: true });
-      function smoothMouse() {
-        mouseX += (targetMouseX - mouseX) * 0.08;
-        mouseY += (targetMouseY - mouseY) * 0.08;
+    }
+    nodes.forEach(function(n) { n.baseX = n.x; n.baseY = n.y; });
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  document.addEventListener('mousemove', function(e) {
+    targetMouseX = e.clientX / width;
+    targetMouseY = e.clientY / height;
+  });
+  document.addEventListener('touchmove', function(e) {
+    var touch = e.touches[0];
+    if (touch) { targetMouseX = touch.clientX / width; targetMouseY = touch.clientY / height; }
+  }, { passive: true });
+  function smoothMouse() {
+    mouseX += (targetMouseX - mouseX) * 0.08;
+    mouseY += (targetMouseY - mouseY) * 0.08;
+  }
+  function updateNodes() {
+    var mouseWorldX = mouseX * width;
+    var mouseWorldY = mouseY * height;
+    nodes.forEach(function(n) {
+      n.vx += (n.baseX - n.x) * 0.012;
+      n.vy += (n.baseY - n.y) * 0.012;
+      var dx = n.x - mouseWorldX;
+      var dy = n.y - mouseWorldY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MOUSE_INFLUENCE && dist > 0.5) {
+        var force = (MOUSE_INFLUENCE - dist) / MOUSE_INFLUENCE * MOUSE_FORCE;
+        n.vx += (dx / dist) * force * 0.4;
+        n.vy += (dy / dist) * force * 0.4;
       }
-      function updateNodes() {
-        const mouseWorldX = mouseX * width;
-        const mouseWorldY = mouseY * height;
-        nodes.forEach(n => {
-          n.vx += (n.baseX - n.x) * 0.012;
-          n.vy += (n.baseY - n.y) * 0.012;
-          const dx = n.x - mouseWorldX;
-          const dy = n.y - mouseWorldY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < MOUSE_INFLUENCE && dist > 0.5) {
-            const force = (MOUSE_INFLUENCE - dist) / MOUSE_INFLUENCE * MOUSE_FORCE;
-            n.vx += (dx / dist) * force * 0.4;
-            n.vy += (dy / dist) * force * 0.4;
-          }
-          nodes.forEach(other => {
-            if (other === n) return;
-            const dx2 = n.x - other.x;
-            const dy2 = n.y - other.y;
-            const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-            if (dist2 < CONNECT_DIST && dist2 > 0.5) {
-              const force = (CONNECT_DIST - dist2) / CONNECT_DIST * 0.02;
-              n.vx += (dx2 / dist2) * force * 0.3;
-              n.vy += (dy2 / dist2) * force * 0.3;
-            }
-          });
-          n.vx *= 0.94;
-          n.vy *= 0.94;
-          n.x += n.vx;
-          n.y += n.vy;
-          n.x = Math.max(0, Math.min(width, n.x));
-          n.y = Math.max(0, Math.min(height, n.y));
-        });
-      }
-      function draw() {
-        ctx.clearRect(0, 0, width, height);
-        for (let i = 0; i < nodes.length; i++) {
-          for (let j = i + 1; j < nodes.length; j++) {
-            const dx = nodes[i].x - nodes[j].x;
-            const dy = nodes[i].y - nodes[j].y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < CONNECT_DIST) {
-              const alpha = 0.15 * (1 - dist / CONNECT_DIST);
-              ctx.beginPath();
-              ctx.moveTo(nodes[i].x, nodes[i].y);
-              ctx.lineTo(nodes[j].x, nodes[j].y);
-              ctx.strokeStyle = 'rgba(165, 180, 252, ' + alpha + ')';
-              ctx.lineWidth = 1.2;
-              ctx.stroke();
-            }
-          }
+      nodes.forEach(function(other) {
+        if (other === n) return;
+        var dx2 = n.x - other.x;
+        var dy2 = n.y - other.y;
+        var dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+        if (dist2 < CONNECT_DIST && dist2 > 0.5) {
+          var force = (CONNECT_DIST - dist2) / CONNECT_DIST * 0.02;
+          n.vx += (dx2 / dist2) * force * 0.3;
+          n.vy += (dy2 / dist2) * force * 0.3;
         }
-        nodes.forEach(n => {
-          ctx.shadowColor = 'rgba(99, 102, 241, 0.2)';
-          ctx.shadowBlur = 12;
+      });
+      n.vx *= 0.94;
+      n.vy *= 0.94;
+      n.x += n.vx;
+      n.y += n.vy;
+      n.x = Math.max(0, Math.min(width, n.x));
+      n.y = Math.max(0, Math.min(height, n.y));
+    });
+  }
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+    for (var i = 0; i < nodes.length; i++) {
+      for (var j = i + 1; j < nodes.length; j++) {
+        var dx = nodes[i].x - nodes[j].x;
+        var dy = nodes[i].y - nodes[j].y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CONNECT_DIST) {
+          var alpha = 0.15 * (1 - dist / CONNECT_DIST);
           ctx.beginPath();
-          ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(165, 180, 252, 0.6)';
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.beginPath();
-          ctx.arc(n.x, n.y, n.radius * 0.4, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(220, 230, 255, 0.8)';
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        });
-        const mouseWorldX = mouseX * width;
-        const mouseWorldY = mouseY * height;
-        const gradient = ctx.createRadialGradient(
-          mouseWorldX, mouseWorldY, 0,
-          mouseWorldX, mouseWorldY, MOUSE_INFLUENCE
-        );
-        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.03)');
-        gradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
-        ctx.beginPath();
-        ctx.arc(mouseWorldX, mouseWorldY, MOUSE_INFLUENCE, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.strokeStyle = 'rgba(165, 180, 252, ' + alpha + ')';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
       }
-      function animate() {
-        smoothMouse();
-        updateNodes();
-        draw();
-        requestAnimationFrame(animate);
-      }
-      animate();
-    })();
-  </script>
-</body>
-</html>
-STUB
-    chmod 644 "${web_root}/index.html"
+    }
+    nodes.forEach(function(n) {
+      ctx.shadowColor = 'rgba(99, 102, 241, 0.2)';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(165, 180, 252, 0.6)';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(220, 230, 255, 0.8)';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+    var mouseWorldX = mouseX * width;
+    var mouseWorldY = mouseY * height;
+    var gradient = ctx.createRadialGradient(
+      mouseWorldX, mouseWorldY, 0,
+      mouseWorldX, mouseWorldY, MOUSE_INFLUENCE
+    );
+    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.03)');
+    gradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
+    ctx.beginPath();
+    ctx.arc(mouseWorldX, mouseWorldY, MOUSE_INFLUENCE, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+  function animate() {
+    smoothMouse();
+    updateNodes();
+    draw();
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+JS
+    chmod 644 "${web_root}/script.js"
 
     # Временный HTTP-конфиг для получения сертификата
     cat > "/etc/nginx/sites-available/${domain}" << EOF
