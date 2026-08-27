@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Скоро запуск • живая сеть</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="network-canvas"></canvas>
+  <div class="hero">
+    <div class="neon-icon">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+        <path d="M8 4 L4 8" />
+        <path d="M16 4 L20 8" />
+        <path d="M4 16 L8 20" />
+        <path d="M20 16 L16 20" />
+      </svg>
+    </div>
+    <h1>Скоро здесь</h1>
+    <div class="tagline">
+      <span>Новый уровень в разработке</span>
+      <span class="badge">✦ coming soon</span>
+    </div>
+    <div class="timer-grid" id="timerGrid">
+      <div class="time-block"><span class="time-number" id="days">00</span><span class="time-label">дней</span></div>
+      <div class="time-block"><span class="time-number" id="hours">00</span><span class="time-label">часов</span></div>
+      <div class="time-block"><span class="time-number" id="minutes">00</span><span class="time-label">минут</span></div>
+      <div class="time-block"><span class="time-number" id="seconds">00</span><span class="time-label">секунд</span></div>
+    </div>
+    <div class="description">
+      <strong>✦ Мы создаём нечто особенное</strong> — инновационный продукт, который изменит ваш опыт.
+      Осталось совсем чуть-чуть. Подпишись и будь в курсе!
+    </div>
+    <form class="cta-form" id="subscribeForm">
+      <input type="email" placeholder="Ваш email" required aria-label="Email для уведомлений" />
+      <button type="submit">Уведомить меня</button>
+    </form>
+    <div class="footer-links">
+      <span>© 2026 — ваш проект</span>
+      <span class="dot">•</span>
+      <a href="#" data-alert="hello@project.dev">Контакты</a>
+      <span class="dot">•</span>
+      <a href="#" data-alert="Политика конфиденциальности">Конфиденциальность</a>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
