@@ -790,6 +790,31 @@ do_add_client() {
 
     if ! validate_username "$new_user"; then return; fi
 
+    # Определяем тип прокси: mtproto (по умолчанию) или web
+    local client_type="${FLAG_CLIENT_TYPE:-mtproto}"
+    if is_interactive && [[ -z "$FLAG_CLIENT_TYPE" ]]; then
+        echo ""
+        echo -e "${CYAN} Тип прокси:${NC}"
+        echo "   1) MTProto (tg://proxy, стандартный)"
+        echo "   2) WEB (tg://webproxy, для Telegram Desktop)"
+        echo -ne " Выбор [1/2]: "; read -r ctype
+        case "$ctype" in
+            2|web|WEB) client_type="web" ;;
+            *)         client_type="mtproto" ;;
+        esac
+    fi
+    if [[ "$client_type" != "mtproto" && "$client_type" != "web" ]]; then
+        error "Неверный тип прокси: ${client_type} (допустимо: mtproto, web)"
+        return
+    fi
+
+    if [[ "$client_type" == "web" ]]; then
+        if ! grep -q '^\[web\]$' "$TELEMT_CONFIG" 2>/dev/null; then
+            error "WEB-прокси не настроен. Сначала выполни --web-proxy"
+            return
+        fi
+    fi
+
     local api_port
     api_port=$(detect_api_port)
     local resp
@@ -807,13 +832,46 @@ do_add_client() {
 
     local new_secret link
     new_secret=$(echo "$resp" | jq -r '.data.secret // empty')
-    link=$(echo "$resp" | jq -r '.data.user.links.tls[]?' 2>/dev/null | head -1)
+
+    # Для WEB-клиента: добавить профиль в [[web.vhosts.profiles]] и перезагрузить telemt
+    if [[ "$client_type" == "web" ]]; then
+        if ! grep -q "^user = \"${new_user}\"$" "$TELEMT_CONFIG" 2>/dev/null; then
+            cat >> "$TELEMT_CONFIG" << EOF
+
+[[web.vhosts.profiles]]
+user = "${new_user}"
+secret_mode = "dd"
+max_sessions = 8
+max_streams = 512
+max_streams_per_session = 64
+EOF
+            _fix_config_perm
+            systemctl reload telemt 2>/dev/null || systemctl restart telemt 2>/dev/null || true
+            sleep 2
+        else
+            info "Профиль ${new_user} уже существует в WEB-конфиге"
+        fi
+
+        local web_domain
+        web_domain=$(load_manager_config "DOMAIN" "")
+        [[ -z "$web_domain" ]] && web_domain=$(load_manager_config "SETUP_DOMAIN" "")
+        if [[ -n "$new_secret" ]]; then
+            link="tg://webproxy?server=${web_domain}&secret=dd${new_secret}"
+        else
+            local cfg_secret
+            cfg_secret=$(grep -oP "^${new_user}\s*=\s*\"\K[0-9a-fA-F]{32}" "$TELEMT_CONFIG" | head -1)
+            [[ -n "$cfg_secret" ]] && link="tg://webproxy?server=${web_domain}&secret=dd${cfg_secret}"
+        fi
+    else
+        link=$(echo "$resp" | jq -r '.data.user.links.tls[]?' 2>/dev/null | head -1)
+    fi
 
     echo ""
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN} Клиент добавлен!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo -e " Имя:    ${new_user}"
+    echo -e " Тип:    ${client_type}"
     [[ -n "$new_secret" ]] && echo -e " Секрет: ${new_secret}"
     echo ""
     if [[ -n "$link" ]]; then
@@ -2633,6 +2691,7 @@ FLAG_INSTALL=false
 FLAG_REMOVE=false
 FLAG_LINKS=false
 FLAG_ADD_CLIENT=""
+FLAG_CLIENT_TYPE=""
 FLAG_DEL_CLIENT=""
 FLAG_INSTALL_PANEL=false
 FLAG_REMOVE_PANEL=false
@@ -2673,6 +2732,7 @@ usage() {
     echo "  --remove            Удалить Telemt"
     echo "  --links             Показать ссылки и статистику"
     echo "  --add-client NAME   Добавить клиента"
+    echo "    --client-type TYPE   Тип прокси: mtproto или web (по умолч. mtproto)"
     echo "  --del-client NAME   Удалить клиента"
     echo "  --update            Обновить Telemt (интерактивно)"
     echo ""
@@ -2713,6 +2773,7 @@ parse_args() {
             --remove)          FLAG_REMOVE=true ;;
             --links)           FLAG_LINKS=true ;;
             --add-client)      shift; FLAG_ADD_CLIENT="$1" ;;
+            --client-type)     shift; FLAG_CLIENT_TYPE="$1" ;;
             --del-client)      shift; FLAG_DEL_CLIENT="$1" ;;
             --install-panel)   FLAG_INSTALL_PANEL=true ;;
             --remove-panel)    FLAG_REMOVE_PANEL=true ;;
