@@ -960,12 +960,45 @@ do_del_client() {
 
     local api_port
     api_port=$(detect_api_port)
+
+    local is_web_del=false
+    if [[ -f "$TELEMT_CONFIG" ]] && \
+            grep -q '^\[\[web\.vhosts\.profiles\]\]' "$TELEMT_CONFIG" 2>/dev/null; then
+        is_web_del=$(python3 - "$del_user" "$TELEMT_CONFIG" <<'PYEOF'
+import re, sys
+user, path = sys.argv[1], sys.argv[2]
+lines = open(path).read().splitlines()
+out, i, removed = [], 0, False
+while i < len(lines):
+    line = lines[i]
+    if line.startswith('[[web.vhosts.profiles]]'):
+        block, j = [line], i + 1
+        while j < len(lines) and not lines[j].startswith('['):
+            block.append(lines[j]); j += 1
+        if any(re.match(r'^user\s*=\s*"' + re.escape(user) + r'"\s*$', b) for b in block):
+            i = j; removed = True
+            continue
+    out.append(line); i += 1
+open(path, 'w').write('\n'.join(out) + ('\n' if out else ''))
+print('true' if removed else 'false')
+PYEOF
+)
+    fi
+
+    if [[ "$is_web_del" == "true" ]]; then
+        _fix_config_perm
+        info "Удаляю WEB-профиль '${del_user}' из конфига..."
+    fi
+
     local resp
     resp=$(curl -s --max-time 5 -X DELETE \
         "http://127.0.0.1:${api_port}/v1/users/${del_user}")
 
     if echo "$resp" | jq -e '.ok' &>/dev/null; then
         info "Клиент '${del_user}' удалён."
+        if $is_web_del; then
+            systemctl reload telemt 2>/dev/null || systemctl restart telemt 2>/dev/null || true
+        fi
     else
         local err
         err=$(echo "$resp" | jq -r '.error.message // "неизвестная ошибка"' 2>/dev/null)
