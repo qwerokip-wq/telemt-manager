@@ -202,6 +202,14 @@ load_manager_config() {
     fi
 }
 
+# Восстановить права на конфиг после любого редактирования
+_fix_config_perm() {
+    [[ -f "$TELEMT_CONFIG" ]] || return 0
+    chown root:telemt "$TELEMT_CONFIG" 2>/dev/null \
+        || chown telemt:telemt "$TELEMT_CONFIG" 2>/dev/null || true
+    chmod 640 "$TELEMT_CONFIG" 2>/dev/null || true
+}
+
 # Валидация порта
 validate_port() {
     local p="$1" name="$2"
@@ -565,8 +573,7 @@ EOF
 
     chown telemt:telemt /etc/telemt
     chmod 750 /etc/telemt
-    chown root:telemt "$TELEMT_CONFIG"
-    chmod 640 "$TELEMT_CONFIG"
+    _fix_config_perm
 
     info "Создаю systemd unit..."
     cat > "$TELEMT_SERVICE" << 'EOF'
@@ -1633,11 +1640,13 @@ do_ad_tag() {
                 else
                     sed -i '/^\[general\]/a ad_tag = "'"$tag"'"' "$TELEMT_CONFIG"
                 fi
+                _fix_config_perm
                 systemctl reload telemt 2>/dev/null || true
                 info "Глобальный ad_tag установлен"
                 ;;
             2)
                 sed -i '/^ad_tag = /d' "$TELEMT_CONFIG"
+                _fix_config_perm
                 systemctl reload telemt 2>/dev/null || true
                 info "Глобальный ad_tag удалён"
                 ;;
@@ -1659,6 +1668,7 @@ do_ad_tag() {
                 fi
                 sed -i "/^\[access\.user_ad_tags\]/,/^\[/{/^${uname} = /d}" "$TELEMT_CONFIG"
                 sed -i "/^\[access\.user_ad_tags\]/a ${uname} = \"${tag}\"" "$TELEMT_CONFIG"
+                _fix_config_perm
                 systemctl reload telemt 2>/dev/null || true
                 info "Per-user ad_tag для ${uname} установлен"
                 ;;
@@ -1670,6 +1680,7 @@ do_ad_tag() {
                     return
                 fi
                 sed -i "/^\[access\.user_ad_tags\]/,/^\[/{/^${uname} = /d}" "$TELEMT_CONFIG"
+                _fix_config_perm
                 systemctl reload telemt 2>/dev/null || true
                 info "Per-user ad_tag для ${uname} удалён"
                 ;;
@@ -1716,6 +1727,7 @@ do_ad_tag() {
                 fi
                 info "Глобальный ad_tag установлен"
             fi
+            _fix_config_perm
             systemctl reload telemt 2>/dev/null || true
             ;;
         del)
@@ -1727,6 +1739,7 @@ do_ad_tag() {
                 sed -i '/^ad_tag = /d' "$TELEMT_CONFIG"
                 info "Глобальный ad_tag удалён"
             fi
+            _fix_config_perm
             systemctl reload telemt 2>/dev/null || true
             ;;
     esac
@@ -1836,6 +1849,7 @@ EOF
         domain_esc=$(printf '%s' "$domain" | sed 's/[&/\]/\\&/g')
         sed -i "s/^public_host = .*/public_host = \"${domain_esc}\"/" "$TELEMT_CONFIG"
         sed -i "/^public_port = /d" "$TELEMT_CONFIG"
+        _fix_config_perm
         systemctl restart telemt 2>/dev/null || true
     fi
 
@@ -1901,6 +1915,7 @@ do_public_mode() {
     sed -i "s/^public_host = .*/public_host = \"${host_esc}\"/" "$TELEMT_CONFIG"
 
     sed -i "/^public_port = /d" "$TELEMT_CONFIG"
+    _fix_config_perm
 
     save_manager_config "PUBLIC_MODE" "$mode"
     systemctl restart telemt 2>/dev/null || true
@@ -2087,6 +2102,7 @@ EOF
     fi
 
     # 5. Перезапуск telemt
+    _fix_config_perm
     systemctl restart telemt 2>/dev/null || true
 
     save_manager_config "WEB_PROXY" "on"
