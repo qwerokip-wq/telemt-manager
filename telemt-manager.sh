@@ -898,9 +898,24 @@ do_del_client() {
             error "API не ответил"
             return
         fi
-        echo "$users_raw" | jq -r '.data[].username' 2>/dev/null | sed 's/^/  /'
+        local -a user_list
+        mapfile -t user_list < <(echo "$users_raw" | jq -r '.data[].username' 2>/dev/null)
+        if [[ ${#user_list[@]} -eq 0 ]]; then
+            warn "Клиентов нет."
+            return
+        fi
+        for i in "${!user_list[@]}"; do
+            echo "  $((i+1))) ${user_list[$i]}"
+        done
         echo ""
-        echo -ne " Имя клиента для удаления: "; read -r del_user
+        echo -ne " Номер клиента для удаления: "; read -r num_choice
+        if ! [[ "$num_choice" =~ ^[0-9]+$ ]] \
+                || [[ "$num_choice" -lt 1 ]] \
+                || [[ "$num_choice" -gt "${#user_list[@]}" ]]; then
+            error "Некорректный номер."
+            return
+        fi
+        del_user="${user_list[$((num_choice-1))]}"
     else
         del_user="$FLAG_DEL_CLIENT"
     fi
